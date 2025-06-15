@@ -1,142 +1,208 @@
 from http import HTTPStatus
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, HTTPException
 from lnbits.core.services import create_invoice
 from lnbits.utils.exchange_rates import fiat_amount_as_satoshis
+import json
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from hashlib import sha256
+from loguru import logger
+import json
+
+from pydantic import parse_obj_as
+
+
+from lnurl import LnurlErrorResponse, LnurlPayActionResponse, LnurlPayResponse
+from lnurl.models import UrlAction
+from lnurl.types import (
+    ClearnetUrl,
+    DebugUrl,
+    LightningInvoice,
+    Max144Str,
+    MilliSatoshi,
+    OnionUrl,
+    LnurlPayMetadata,
+)
 
 from .crud import (
-    create_bitcoinswitch_payment,
-    delete_bitcoinswitch_payment,
-    get_bitcoinswitch,
-    get_bitcoinswitch_payment,
-    update_bitcoinswitch_payment,
+    get_device,
+    create_partytap_payment,
+    update_partytap_payment,
+    get_partytap_payment
 )
 
-bitcoinswitch_lnurl_router = APIRouter(prefix="/api/v1/lnurl")
+partytap_lnurl_router = APIRouter(prefix="/api/v1/lnurl")
 
 
-@bitcoinswitch_lnurl_router.get(
-    "{bitcoinswitch_id}",
+@partytap_lnurl_router.get(
+    "/{device_id}",
     status_code=HTTPStatus.OK,
-    name="bitcoinswitch.lnurl_params",
+    name="partytap.lnurl_params",
 )
-async def lnurl_params(
+async def lnurl_offline_payment(
     request: Request,
-    bitcoinswitch_id: str,
-    pin: str,
-    amount: str,
-    duration: str,
-    variable: bool = Query(None),
-    comment: bool = Query(None),
-):
-    switch = await get_bitcoinswitch(bitcoinswitch_id)
-    if not switch:
+    device_id: str,
+    encrypted: str,
+    iv: str
+): 
+    logger.info("Entered lnurl_offline_payment")
+    device = await get_device(device_id)
+    if not device:
         return {
             "status": "ERROR",
-            "reason": f"bitcoinswitch {bitcoinswitch_id} not found on this server",
+            "reason": f"partytap device {device_id} not found on this server",
         }
 
+    # convert IV to byte string
+    ivBytes = bytes.fromhex(iv)
+    keyBytes = str.encode(device.key[:16])
+    encryptedBytes = bytes.fromhex(encrypted)
+
+    # we're using AES CBC mode
+    cipher = Cipher(algorithms.AES(keyBytes), modes.CBC(ivBytes))
+    decryptor = cipher.decryptor()
+    decrypted_message = decryptor.update(encryptedBytes) + decryptor.finalize()
+
+    if ( decrypted_message[16:].hex() != sha256(decrypted_message[:16]).hexdigest() ):
+        logger.info(f"Incorrect message hash, message ignored")
+        raise HTTPException(
+            status_code=HTTPStatus.FORBIDDEN, detail="Incorrect input"
+        )
+
+
+    # Check they're not trying to trick the switch!
+    switch_id = decrypted_message[0:8].decode()
+    switch = None
+    for _switch in device.switches:
+        if _switch.id == switch_id:
+            switch = _switch
+            break
+    if not switch:
+        return {"status": "ERROR", "reason": "Switch params wrong"}
+    
+
+    # extract PIN
+    # e = 'b'Lfzmmibg:961:\x00\xfe?!\xf9\xabl
+    decrypted_pin_part = decrypted_message[9:13].decode()
+    result = decrypted_pin_part.find(':')
+    if result == -1:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail="Incorrect payload"
+        )
+    secret_pin = decrypted_pin_part[:result]
+
+    # determine price
     price_msat = int(
         (
-            await fiat_amount_as_satoshis(float(amount), switch.currency)
-            if switch.currency != "sat"
-            else float(amount)
-        )
+            await fiat_amount_as_satoshis(float(switch.amount), device.currency)
+            if device.currency != "sat"
+            else float(switch.amount)
+        ) 
         * 1000
     )
 
-    # Check they're not trying to trick the switch!
-    check = False
-    for _switch in switch.switches:
-        if (
-            _switch.pin == int(pin)
-            and _switch.duration == int(duration)
-            and bool(_switch.variable) == bool(variable)
-            and bool(_switch.comment) == bool(comment)
-        ):
-            check = True
-            continue
-    if not check:
-        return {"status": "ERROR", "reason": "Extra params wrong"}
-
-    bitcoinswitch_payment = await create_bitcoinswitch_payment(
-        bitcoinswitch_id=switch.id,
-        payload=duration,
+    partytap_payment = await create_partytap_payment(
+        device_id=device.id,
+        switch_id=switch.id,
+        payload=switch.duration,
         amount_msat=price_msat,
-        pin=int(pin),
         payment_hash="not yet set",
+        pin=secret_pin
     )
-    if not bitcoinswitch_payment:
+    if not partytap_payment:
         return {"status": "ERROR", "reason": "Could not create payment."}
 
     url = str(
         request.url_for(
-            "bitcoinswitch.lnurl_callback", payment_id=bitcoinswitch_payment.id
+            "partytap.lnurl_callback", payment_id=partytap_payment.id
         )
     )
-    resp = {
-        "tag": "payRequest",
-        "callback": f"{url}?variable={variable}",
-        "minSendable": price_msat,
-        "maxSendable": price_msat,
-        "commentAllowed": 255,
-        "metadata": switch.lnurlpay_metadata,
-    }
-    if comment:
-        resp["commentAllowed"] = 1500
-    if variable is True:
-        resp["maxSendable"] = price_msat * 360
-    return resp
+
+    memo = f"{device.title} {switch.label}"
+    resp =  LnurlPayResponse(
+        callback=url,
+        minSendable=MilliSatoshi(price_msat),
+        maxSendable=MilliSatoshi(price_msat),
+        metadata=LnurlPayMetadata(json.dumps([["text/plain", memo]])),
+    )
+    return resp.dict()
 
 
-@bitcoinswitch_lnurl_router.get(
+@partytap_lnurl_router.get(
     "/cb/{payment_id}",
     status_code=HTTPStatus.OK,
-    name="bitcoinswitch.lnurl_callback",
+    name="partytap.lnurl_callback",
 )
-async def lnurl_callback(
+async def lnurl_callback( 
+    request: Request,
     payment_id: str,
-    variable: bool = Query(None),
-    amount: int = Query(None),
-    comment: str = Query(None),
+    pr: int = Query(None),
+    k1: str = Query(None),
 ):
-    bitcoinswitch_payment = await get_bitcoinswitch_payment(payment_id)
-    if not bitcoinswitch_payment:
-        return {"status": "ERROR", "reason": "bitcoinswitchpayment not found."}
-    switch = await get_bitcoinswitch(bitcoinswitch_payment.bitcoinswitch_id)
+    logger.info("Entered lnurl_callback")
+    partytap_payment = await get_partytap_payment(payment_id)
+    if not partytap_payment:
+        return LnurlErrorResponse(reason = "partytap payment not found.")
+    device = await get_device(partytap_payment.deviceid)
+    if not device:
+        return LnurlErrorResponse(reason = "device not found.")
+
+    switch = None
+    for _switch in device.switches:
+        if _switch.id == partytap_payment.switchid:
+            switch = _switch
+            break
+    
     if not switch:
-        await delete_bitcoinswitch_payment(payment_id)
-        return {"status": "ERROR", "reason": "bitcoinswitch not found."}
+        return LnurlErrorResponse(reason = "device switch not found.")
 
-    if not amount:
-        return {"status": "ERROR", "reason": "No amount"}
+    memo = f"{device.title} {switch.label}"
+    try:
+        payment = await create_invoice(
+            wallet_id=device.wallet,
+            amount=int(partytap_payment.sats / 1000),
+            memo=memo,
+            unhashed_description=LnurlPayMetadata(json.dumps([["text/plain", memo]])).encode(),
+            extra={
+                "tag": "PartyTap",
+                "Device": device.id,
+                "Switch": switch.id,
+                "amount": switch.amount,
+                "currency": device.currency,
+                "id": payment_id,
+                "received": False,
+                "acknowledged": False,
+                "fulfilled": False,
+                "offline": True
+            },
+        )
+    except Exception as X:
+        logger.error(f"An exception of type: {type(X).__name__} occured")
+        logger.error(X)
+        return LnurlErrorResponse(reason = "Failed to create invoice")
 
-    payment = await create_invoice(
-        wallet_id=switch.wallet,
-        amount=int(amount / 1000),
-        memo=f"{switch.title} ({bitcoinswitch_payment.payload} ms)",
-        unhashed_description=switch.lnurlpay_metadata.encode(),
-        extra={
-            "tag": "Switch",
-            "pin": str(bitcoinswitch_payment.pin),
-            "amount": str(int(amount)),
-            "comment": comment,
-            "variable": variable,
-            "id": payment_id,
-        },
-    )
-    bitcoinswitch_payment.payment_hash = payment.payment_hash
-    await update_bitcoinswitch_payment(bitcoinswitch_payment)
+    partytap_payment.payhash = payment.payment_hash
+    await update_partytap_payment(partytap_payment)
 
-    message = f"{int(amount / 1000)}sats sent"
-    if switch.password and switch.password != comment:
-        message = f"{message}, but password was incorrect! :("
+    if ( partytap_payment.pin is not None and len(partytap_payment.pin) > 0 ):
+        logger.info("PIN is defined")
+        url = str(request.url_for("partytap.displaypin", paymentid=payment_id))
 
-    return {
-        "pr": payment.bolt11,
-        "successAction": {
-            "tag": "message",
-            "message": message,
-        },
-        "routes": [],
-    }
+        succes_action = UrlAction(
+            url=url,
+            description=Max144Str(
+                "Open to get the confirmation PIN."
+            ),
+        )
+        invoice = parse_obj_as(LightningInvoice,LightningInvoice(payment.bolt11))
+        resp = LnurlPayActionResponse(
+            pr=invoice,
+            successAction=succes_action,
+            routes=[]
+        )
+
+        return resp.dict()
+    else:
+        logger.info("PIN is not defined")
+        return LnurlErrorResponse(reason = "No PIN defined")

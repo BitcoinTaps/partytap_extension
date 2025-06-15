@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from lnbits.core.models import Payment
 from lnbits.core.services import websocket_updater
@@ -6,15 +7,15 @@ from lnbits.tasks import register_invoice_listener
 from loguru import logger
 
 from .crud import (
-    get_bitcoinswitch,
-    get_bitcoinswitch_payment,
-    update_bitcoinswitch_payment,
+    get_device,
+    get_partytap_payment,
+    update_partytap_payment,
 )
 
 
 async def wait_for_paid_invoices():
     invoice_queue = asyncio.Queue()
-    register_invoice_listener(invoice_queue, "ext_bitcoinswitch")
+    register_invoice_listener(invoice_queue, "ext_partytap")
 
     while True:
         payment = await invoice_queue.get()
@@ -22,41 +23,37 @@ async def wait_for_paid_invoices():
 
 
 async def on_invoice_paid(payment: Payment) -> None:
-    if payment.extra.get("tag") != "Switch":
+    logger.info("Got Invoice")
+    if payment.extra.get("tag") != "PartyTap":
         return
 
-    bitcoinswitch_payment = await get_bitcoinswitch_payment(payment.extra["id"])
+    logger.info("Got Partytap invoice")
+    
+    partytap_payment = await get_partytap_payment(payment.extra["id"])
 
-    if not bitcoinswitch_payment or bitcoinswitch_payment.payment_hash == "paid":
+    if not partytap_payment:
+        return
+    if partytap_payment.payhash == "paid":
+        logger.info("paid")
+        return
+    if partytap_payment.payhash == "used":
+        logger.info("used")
         return
 
-    bitcoinswitch = await get_bitcoinswitch(bitcoinswitch_payment.bitcoinswitch_id)
-    if not bitcoinswitch:
-        logger.error("no bitcoinswitch found for payment.")
-        return
 
-    bitcoinswitch_payment.payment_hash = bitcoinswitch_payment.payload
-    bitcoinswitch_payment = await update_bitcoinswitch_payment(bitcoinswitch_payment)
-    payload = bitcoinswitch_payment.payload
 
-    variable = payment.extra.get("variable")
-    if variable is True:
-        payload = str(
-            (int(payload) / int(bitcoinswitch_payment.sats))
-            * int(payment.extra["amount"])
-        )
-    payload = f"{bitcoinswitch_payment.pin}-{payload}"
+    partytap_payment.payhash = payment.payment_hash
+    partytap_payment = await update_partytap_payment(partytap_payment)
 
-    comment = payment.extra.get("comment")
-    if comment:
-        payload = f"{payload}-{comment}"
+    message = json.dumps({
+        'event':'paid',
+        'payment_hash':partytap_payment.payhash,
+        'payload':partytap_payment.payload
+    })
 
-    if bitcoinswitch.password and bitcoinswitch.password != comment:
-        # Wrong password
-        logger.info(f"Wrong password entered for bitcoin switch: {bitcoinswitch.id}")
-        return
+    logger.info("sending on the socket")
 
     return await websocket_updater(
-        bitcoinswitch_payment.bitcoinswitch_id,
-        payload,
+        partytap_payment.deviceid,
+        message
     )

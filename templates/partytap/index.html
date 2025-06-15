@@ -1,11 +1,12 @@
 {% extends "base.html" %} {% from "macros.jinja" import window_vars with context
-%} {% block page %}
+%}
+ {% block page %}
 <div class="row q-col-gutter-md">
   <div class="col-12 col-md-7 q-gutter-y-md">
     <q-card>
       <q-card-section>
         <q-btn unelevated color="primary" @click="formDialog.show = true"
-          >New Bitcoinswitch
+          >New Device
         </q-btn>
       </q-card-section>
     </q-card>
@@ -14,7 +15,7 @@
       <q-card-section>
         <div class="row items-center no-wrap q-mb-md">
           <div class="col">
-            <h5 class="text-subtitle1 q-my-none">Bitcoin Switches</h5>
+            <h5 class="text-subtitle1 q-my-none">Devices</h5>
           </div>
 
           <div class="col-auto">
@@ -35,15 +36,13 @@
         <q-table
           flat
           dense
-          :rows="bitcoinswitches"
+          :rows="devices"
           row-key="id"
-          :columns="bitcoinswitchTable.columns"
-          v-model:pagination="bitcoinswitchTable.pagination"
+          :columns="deviceTable.columns"
+          v-model:pagination="deviceTable.pagination"
         >
           <template v-slot:header="props">
             <q-tr :props="props">
-              <q-th style="width: 5%"></q-th>
-              <q-th style="width: 5%"></q-th>
               <q-th style="width: 5%"></q-th>
               <q-th style="width: 5%"></q-th>
 
@@ -65,11 +64,11 @@
                   flat
                   dense
                   size="xs"
-                  @click="openUpdateBitcoinswitch(props.row.id)"
+                  @click="openUpdateDevice(props.row.id)"
                   icon="edit"
                   color="blue"
                 >
-                  <q-tooltip>Edit Bitcoinswitch</q-tooltip>
+                  <q-tooltip>Edit Device</q-tooltip>
                 </q-btn>
               </q-td>
               <q-td>
@@ -77,46 +76,24 @@
                   flat
                   dense
                   size="xs"
-                  @click="deleteBitcoinswitch(props.row.id)"
+                  @click="deleteDevice(props.row.id)"
                   icon="cancel"
                   color="pink"
                 >
-                  <q-tooltip>Delete Bitcoinswitch</q-tooltip>
+                  <q-tooltip>Delete Device</q-tooltip>
                 </q-btn>
               </q-td>
-              <q-td>
-                <q-btn
-                  flat
-                  dense
-                  size="xs"
-                  @click="openBitcoinswitchSettings(props.row.id)"
-                  icon="perm_data_setting"
-                  color="primary"
-                >
-                  <q-tooltip>Bitcoinswitch Settings</q-tooltip>
-                </q-btn>
-              </q-td>
-              <q-td>
-                <q-btn
-                  :disable="protocol == 'http:'"
-                  flat
-                  unelevated
-                  dense
-                  size="xs"
-                  icon="visibility"
-                  @click="openQrCodeDialog(props.row.id)"
-                  ><q-tooltip v-if="protocol == 'http:'">
-                    LNURLs only work over HTTPS </q-tooltip
-                  ><q-tooltip v-else> view LNURLS </q-tooltip></q-btn
-                >
-              </q-td>
-              <q-td
+
+    
+           <q-td
                 v-for="col in props.cols"
                 :key="col.name"
                 :props="props"
                 auto-width
               >
                 <div v-if="col.name == 'id'"></div>
+                <div v-else-if="col.name == 'websocket' && col.value != 0 "><q-btn flat dense size="s" color="green" icon="link"><q-tooltip>Connected</q-tooltip></q-btn></div>
+		        <div v-else-if="col.name == 'websocket' && col.value == 0 "><q-btn flat dense size="s" color="red" icon="link_off"><q-tooltip>Disonnected</q-tooltip></q-btn></div>
                 <div v-else v-text="col.value"></div>
               </q-td>
             </q-tr>
@@ -130,38 +107,44 @@
     <q-card>
       <q-card-section>
         <h6 class="text-subtitle1 q-my-none">
-          {{SITE_TITLE}} Bitcoinswitch Extension
+          {{SITE_TITLE}} BitcoinTaps Partytap Extension
         </h6>
       </q-card-section>
       <q-separator></q-separator>
       <q-card-section>
         <p>
-          Turn on and off things with bitcoin!<br />
-          Bitcoin Switch Hardware:
-          <a
-            class="text-secondary"
-            href="https://github.com/lnbits/bitcoinSwitch"
-          >
-            https://github.com/lnbits/bitcoinSwitch</a
-          ><br />
-          <small>
-            Created by,
-            <a class="text-secondary" href="https://github.com/benarc"
-              >Ben Arc</a
-            >,
-            <a class="text-secondary" href="https://github.com/blackcoffeexbt"
-              >BC</a
-            >,
-            <a class="text-secondary" href="https://github.com/motorina0"
-              >Vlad Stan</a
-            >,
-            <a class="text-secondary" href="https://github.com/dni">dni</a>
-          </small>
+          BitcoinTaps PartyTap is an LNbits extension enables lightning payments for beertaps. for more information checkout the GitHub <a href="https://github.com/BitcoinTaps/PartyTap" class="text-secondary">repository</a> or the <A href="https://www.bitcointaps.com/PartyTap">Website</a> for instructions on how to build this beertap.
         </p>
-        <p class="text-warning">
-          WARNING: updating the switches amount, duration or pin will change the
-          QR code.
+        <p>
+          The firmware for the beertap can be flashed right here from within this browser. Connect the PartyTap to your computer and make sure you are viewing this page with the <b>Chrome</b> web browser and press the 'Flash' button. 
         </p>
+        <p>
+          <esp-web-install-button manifest="https://firmware.bitcointaps.com/partytap/ESP32_3248S035C/865875/manifest.json">
+            <button slot="activate">Flash</button>
+          </esp-web-install-button>
+      	</p>
+	<p>
+	  After flashing, perform the following steps:
+	  <ol>
+	    <li>Click the top bar to enter the configuration screen. The default PIN is 123456. This will bring you to the Admin screen. You can always go back to this screen to inspect the current status.</li>
+      <li>On the Admin screen, press the Config button to go to the Configuration menu.</li>
+	    <li>Configure the following data:</li>
+        <ol>
+          <li>Wi-Fi network SSID and password.</li>
+	        <li>The hostname of the LNbits server, probably this one.</li>
+          <li>The device id of the PartyTap.</li>
+          <li>Set Payment mode to: 'Online', which is the default.</li>
+          <li>Set Control mode to: 'Servo, Time', which is the default.</li>
+          <li>Adjust the servo positions for open/close and test them using the 'Open' and 'Close' buttons.</li>      
+        </ol>
+	    <li>Press the 'Restart' button to restart the PartyTap with the updated configuration.</li>
+	  </ol>
+    The PartyTap will display a button to order a drink. If the button is not displayed, go back to the Admin page to inspect the current status.    
+	</p>
+        <p>
+          Created by: <A href="https://github.com/pieterjm" class="text-secondary">Pieter Meulenhoff</A>
+        </p>
+
       </q-card-section>
     </q-card>
   </div>
@@ -214,14 +197,18 @@
           label="Fiat currency for device"
           :options="currency"
         ></q-select>
-        <q-input
+	    <q-select
           filled
           dense
-          v-model.trim="formDialog.data.password"
+          v-model.trim="formDialog.data.branding"
           type="text"
-          label="Password (optional)"
-          tooltip="Password to protect the device, needs to be entered as comment in the LNURL"
-        ></q-input>
+          label="label"
+	      option-label="label"
+	      map-options
+          :options="[ { label: 'BitcoinTaps', value: 'BITCOINTAPS' }, { label: 'Kan het al?', value: 'BEER' }, { label: 'None', value: 'NONE' }, { label: 'Grauburgunder (VJZ)', value: 'VJZGBT'} , { label: 'Bonanza', value: 'BONANZA'} ]"
+	      emit-value
+	      option-value="value"
+        ></q-select>
         <q-btn
           unelevated
           class="q-mb-lg"
@@ -267,40 +254,10 @@
               <q-input
                 filled
                 dense
-                v-model.trim="_switch.pin"
-                type="number"
-                label="GPIO pin"
-              ></q-input>
-            </div>
-            <div class="col q-ml-md">
-              <q-input
-                filled
-                dense
                 v-model.trim="_switch.label"
                 type="text"
                 label="Label"
               ></q-input>
-            </div>
-            <div class="col q-ml-md">
-              <q-checkbox
-                v-model="_switch.variable"
-                color="primary"
-                label="Variable"
-                size="xs"
-                dense
-                ><q-tooltip
-                  >Variable time (Amount * Duration)</q-tooltip
-                ></q-checkbox
-              >
-              <q-checkbox
-                v-model="_switch.comment"
-                color="primary"
-                label="Comment"
-                size="xs"
-                dense
-              >
-                <q-tooltip>Enable LNURLp comments with payments</q-tooltip>
-              </q-checkbox>
             </div>
           </div>
         </div>
@@ -311,7 +268,7 @@
             color="primary"
             :disable=" formDialog.data.title == ''"
             type="submit"
-            >Update Bitcoin Switch</q-btn
+            >Update Device</q-btn
           >
           <q-btn
             v-else
@@ -319,7 +276,7 @@
             color="primary"
             :disable="formDialog.data.title == ''"
             type="submit"
-            >Create Bitcoin Switch</q-btn
+            >Create Device</q-btn
           >
           <q-btn @click="cancelFormDialog" flat color="grey" class="q-ml-auto"
             >Cancel</q-btn
@@ -374,5 +331,6 @@
   </q-dialog>
 </div>
 {% endblock %} {% block scripts %} {{ window_vars(user) }}
-<script src="{{ static_url_for('bitcoinswitch/static', 'js/index.js') }}"></script>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<script src="{{ static_url_for('partytap/static', 'js/index.js') }}"></script>
 {% endblock %}

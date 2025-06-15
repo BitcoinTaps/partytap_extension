@@ -4,63 +4,39 @@ from typing import Optional
 
 from lnurl import encode as lnurl_encode
 from lnurl.types import LnurlPayMetadata
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Extra
 
 
 class Switch(BaseModel):
+    id: Optional[str]
     amount: float = 0.0
     duration: int = 0
-    pin: int = 0
-    comment: bool = False
-    variable: bool = False
-    label: Optional[str] = None
-    lnurl: Optional[str] = None
+    label: Optional[str]
+    lnurl: str = ""
 
-    def set_lnurl(self, url: str) -> str:
-        self.lnurl = str(
-            lnurl_encode(
-                url
-                + f"?pin={self.pin}"
-                + f"&amount={self.amount}"
-                + f"&duration={self.duration}"
-                + f"&variable={self.variable}"
-                + f"&comment={self.comment}"
-                + "&disabletime=0"
-            )
-        )
-        return self.lnurl
-
-
-class CreateBitcoinswitch(BaseModel):
+class CreateDevice(BaseModel):
     title: str
     wallet: str
     currency: str
+    branding: str
     switches: list[Switch]
-    password: Optional[str] = None
 
-
-class Bitcoinswitch(BaseModel):
+class Device(BaseModel, extra=Extra.allow):
     id: str
-    title: str
-    wallet: str
-    currency: str
     key: str
+    title: str
+    wallet: str
+    currency: str
+    branding: str
     switches: list[Switch]
-    password: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: str
 
-    @property
-    def lnurlpay_metadata(self) -> LnurlPayMetadata:
-        return LnurlPayMetadata(json.dumps([["text/plain", self.title]]))
-
-
-class BitcoinswitchPayment(BaseModel):
+class PartytapPayment(BaseModel):
     id: str
-    payment_hash: str
-    bitcoinswitch_id: str
+    deviceid: str
+    payhash: str
+    switchid: str
     payload: str
-    pin: int
+    pin: str
     sats: int
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: str

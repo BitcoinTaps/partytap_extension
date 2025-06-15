@@ -1,9 +1,9 @@
 {
   "repos": [
     {
-      "id": "bitcoinswitch",
-      "organisation": "lnbits",
-      "repository": "bitcoinswitch_extension"
+      "id": "bitcointaps",
+      "organisation": "bitcointaps",
+      "repository": "bitcointaps_extension"
     }
   ]
 }

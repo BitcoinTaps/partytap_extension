@@ -5,27 +5,29 @@ from loguru import logger
 
 from .crud import db
 from .tasks import wait_for_paid_invoices
-from .views import bitcoinswitch_generic_router
-from .views_api import bitcoinswitch_api_router
-from .views_lnurl import bitcoinswitch_lnurl_router
+from .views import partytap_generic_router
+from .views_api import partytap_api_router
+from .views_lnurl import partytap_lnurl_router
+from .views_ws import partytap_ws_router
 
-bitcoinswitch_ext: APIRouter = APIRouter(
-    prefix="/bitcoinswitch", tags=["bitcoinswitch"]
+partytap_ext: APIRouter = APIRouter(
+    prefix="/partytap", tags=["partytap"]
 )
-bitcoinswitch_ext.include_router(bitcoinswitch_generic_router)
-bitcoinswitch_ext.include_router(bitcoinswitch_api_router)
-bitcoinswitch_ext.include_router(bitcoinswitch_lnurl_router)
+partytap_ext.include_router(partytap_generic_router)
+partytap_ext.include_router(partytap_api_router)
+partytap_ext.include_router(partytap_lnurl_router)
+partytap_ext.include_router(partytap_ws_router)
 
-bitcoinswitch_static_files = [
+partytap_static_files = [
     {
-        "path": "/bitcoinswitch/static",
-        "name": "bitcoinswitch_static",
+        "path": "/partytap/static",
+        "name": "partytap_static",
     }
 ]
 scheduled_tasks: list[asyncio.Task] = []
 
 
-def bitcoinswitch_stop():
+def partytap_stop():
     for task in scheduled_tasks:
         try:
             task.cancel()
@@ -33,17 +35,17 @@ def bitcoinswitch_stop():
             logger.warning(ex)
 
 
-def bitcoinswitch_start():
+def partytap_start():
     from lnbits.tasks import create_permanent_unique_task
 
-    task = create_permanent_unique_task("ext_bitcoinswitch", wait_for_paid_invoices)
+    task = create_permanent_unique_task("ext_partytap", wait_for_paid_invoices)
     scheduled_tasks.append(task)
-
+    logger.info("Added scheduled task")
 
 __all__ = [
     "db",
-    "bitcoinswitch_ext",
-    "bitcoinswitch_static_files",
-    "bitcoinswitch_start",
-    "bitcoinswitch_stop",
+    "partytap_ext",
+    "partytap_static_files",
+    "partytap_start",
+    "partytap_stop",
 ]

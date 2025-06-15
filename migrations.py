@@ -1,46 +1,48 @@
 from lnbits.db import Database
 
-db = Database("ext_bitcoinswitch")
+db = Database("ext_partytap")
 
 
 async def m001_initial(db):
     """
-    Initial bitcoinswitch table.
+    Initial device table.
     """
     await db.execute(
         f"""
-        CREATE TABLE bitcoinswitch.switch (
+        CREATE TABLE partytap.device (
             id TEXT NOT NULL PRIMARY KEY,
             key TEXT NOT NULL,
             title TEXT NOT NULL,
             wallet TEXT NOT NULL,
             currency TEXT NOT NULL,
-            switches TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT {db.timestamp_now},
-            updated_at TIMESTAMP NOT NULL DEFAULT {db.timestamp_now}
+            switches TEXT,
+            timestamp TIMESTAMP NOT NULL DEFAULT {db.timestamp_now}
         );
     """
     )
+
+    
     await db.execute(
         f"""
-        CREATE TABLE bitcoinswitch.payment (
+        CREATE TABLE partytap.payment (
             id TEXT NOT NULL PRIMARY KEY,
-            bitcoinswitch_id TEXT NOT NULL,
-            payment_hash TEXT,
+            deviceid TEXT NOT NULL,
+            switchid TEXT NOT NULL,
+            payhash TEXT,
             payload TEXT NOT NULL,
-            pin INT,
             sats {db.big_int},
-            created_at TIMESTAMP NOT NULL DEFAULT {db.timestamp_now},
-            updated_at TIMESTAMP NOT NULL DEFAULT {db.timestamp_now}
+            timestamp TIMESTAMP NOT NULL DEFAULT {db.timestamp_now}
         );
     """
     )
 
-
-async def m002_add_password(db):
-    await db.execute(
-        """
-        ALTER TABLE bitcoinswitch.switch
-        ADD COLUMN password TEXT;
-        """
+async def m002_redux(db):
+     await db.execute(
+        "ALTER TABLE partytap.payment ADD COLUMN pin TEXT DEFAULT '';"
     )
+
+async def m003_redux(db):
+     await db.execute(
+        "ALTER TABLE partytap.device ADD COLUMN branding TEXT DEFAULT 'BitcoinTaps';"
+    )
+    

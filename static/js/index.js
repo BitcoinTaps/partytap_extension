@@ -10,14 +10,26 @@ window.app = Vue.createApp({
       currency: 'USD',
       lnurlValue: '',
       websocketMessage: '',
-      bitcoinswitches: [],
-      bitcoinswitchTable: {
+      devices: [],
+      deviceTable: {
         columns: [
+          {
+            name: 'websocket',
+            align: 'left',
+            label: 'Status',
+            field: 'websocket'
+          },
           {
             name: 'title',
             align: 'left',
             label: 'title',
             field: 'title'
+          },
+          {
+            name: 'theId',
+            align: 'left',
+            label: 'id',
+            field: 'id'
           },
           {
             name: 'wallet',
@@ -30,12 +42,6 @@ window.app = Vue.createApp({
             align: 'left',
             label: 'currency',
             field: 'currency'
-          },
-          {
-            name: 'key',
-            align: 'left',
-            label: 'key',
-            field: 'key'
           }
         ],
         pagination: {
@@ -50,14 +56,10 @@ window.app = Vue.createApp({
         show: false,
         data: {
           switches: [],
-          lnurl_toggle: false,
-          show_message: false,
-          show_ack: false,
-          show_price: 'None',
-          device: 'pos',
-          profit: 1,
-          amount: 1,
-          title: ''
+          title: '',
+          branding: 'BITCOINTAPS',
+          currency: 'sat',
+          wallet: ''
         }
       },
       qrCodeDialog: {
@@ -72,26 +74,23 @@ window.app = Vue.createApp({
     }
   },
   methods: {
-    openQrCodeDialog(bitcoinswitchId) {
-      const bitcoinswitch = _.findWhere(this.bitcoinswitches, {
-        id: bitcoinswitchId
+    openQrCodeDialog(deviceId) {
+      const device = _.findWhere(this.devices, {
+        id: deviceId
       })
-      this.qrCodeDialog.data = _.clone(bitcoinswitch)
+      this.qrCodeDialog.data = _.clone(device)
       this.qrCodeDialog.data.url =
         window.location.protocol + '//' + window.location.host
       this.lnurlValue = this.qrCodeDialog.data.switches[0].lnurl
       this.websocketConnector(
-        'wss://' + window.location.host + '/api/v1/ws/' + bitcoinswitchId
+        'wss://' + window.location.host + '/api/v1/ws/' + deviceId
       )
       this.qrCodeDialog.show = true
     },
     addSwitch() {
       this.formDialog.data.switches.push({
         amount: 10,
-        pin: 0,
         duration: 1000,
-        variable: false,
-        comment: false
       })
     },
     removeSwitch() {
@@ -109,19 +108,19 @@ window.app = Vue.createApp({
     },
     sendFormData() {
       if (this.formDialog.data.id) {
-        this.updateBitcoinswitch(
+        this.updateDevice(
           this.g.user.wallets[0].adminkey,
           this.formDialog.data
         )
       } else {
-        this.createBitcoinswitch(
+        this.createDevice(
           this.g.user.wallets[0].adminkey,
           this.formDialog.data
         )
       }
     },
 
-    createBitcoinswitch(wallet, data) {
+    createDevice(wallet, data) {
       const updatedData = {}
       for (const property in data) {
         if (data[property]) {
@@ -131,12 +130,12 @@ window.app = Vue.createApp({
       LNbits.api
         .request(
           'POST',
-          '/bitcoinswitch/api/v1/bitcoinswitch',
+          '/partytap/api/v1/partytap',
           wallet,
           updatedData
         )
         .then(response => {
-          this.bitcoinswitches.push(response.data)
+          this.devices.push(response.data)
           this.formDialog.show = false
           this.clearFormDialog()
         })
@@ -144,7 +143,7 @@ window.app = Vue.createApp({
           LNbits.utils.notifyApiError(error)
         })
     },
-    updateBitcoinswitch(wallet, data) {
+    updateDevice(wallet, data) {
       const updatedData = {}
       for (const property in data) {
         if (data[property]) {
@@ -154,15 +153,15 @@ window.app = Vue.createApp({
       LNbits.api
         .request(
           'PUT',
-          '/bitcoinswitch/api/v1/bitcoinswitch/' + updatedData.id,
+          '/partytap/api/v1/partytap/' + updatedData.id,
           wallet,
           updatedData
         )
         .then(response => {
-          this.bitcoinswitches = _.reject(this.bitcoinswitches, function (obj) {
+          this.devices = _.reject(this.devices, function (obj) {
             return obj.id === updatedData.id
           })
-          this.bitcoinswitches.push(response.data)
+          this.devices.push(response.data)
           this.formDialog.show = false
           this.clearFormDialog()
         })
@@ -170,37 +169,37 @@ window.app = Vue.createApp({
           LNbits.utils.notifyApiError(error)
         })
     },
-    getBitcoinswitches() {
+    getDevices() {
       LNbits.api
         .request(
           'GET',
-          '/bitcoinswitch/api/v1/bitcoinswitch',
+          '/partytap/api/v1/partytap',
           this.g.user.wallets[0].adminkey
         )
         .then(response => {
           if (response.data.length > 0) {
-            this.bitcoinswitches = response.data
+            this.devices = response.data
           }
         })
         .catch(function (error) {
           LNbits.utils.notifyApiError(error)
         })
     },
-    deleteBitcoinswitch(bitcoinswitchId) {
+    deleteDevice(deviceId) {
       LNbits.utils
         .confirmDialog('Are you sure you want to delete this pay link?')
         .onOk(() => {
           LNbits.api
             .request(
               'DELETE',
-              '/bitcoinswitch/api/v1/bitcoinswitch/' + bitcoinswitchId,
+              '/partytap/api/v1/partytap/' + deviceId,
               this.g.user.wallets[0].adminkey
             )
             .then(() => {
-              this.bitcoinswitches = _.reject(
-                this.bitcoinswitches,
+              this.devices = _.reject(
+                this.devices,
                 function (obj) {
-                  return obj.id === bitcoinswitchId
+                  return obj.id === deviceId
                 }
               )
             })
@@ -209,20 +208,20 @@ window.app = Vue.createApp({
             })
         })
     },
-    openUpdateBitcoinswitch(bitcoinswitchId) {
-      const bitcoinswitch = _.findWhere(this.bitcoinswitches, {
-        id: bitcoinswitchId
+    openUpdateDevice(deviceId) {
+      const device = _.findWhere(this.devices, {
+        id: deviceId
       })
-      this.formDialog.data = _.clone(bitcoinswitch)
+      this.formDialog.data = _.clone(device)
       this.formDialog.show = true
     },
-    openBitcoinswitchSettings(bitcoinswitchId) {
-      const bitcoinswitch = _.findWhere(this.bitcoinswitches, {
-        id: bitcoinswitchId
+    openDeviceSettings(deviceId) {
+      const device = _.findWhere(this.devices, {
+        id: deviceId
       })
       this.wslocation =
-        'wss://' + window.location.host + '/api/v1/ws/' + bitcoinswitchId
-      this.settingsDialog.data = _.clone(bitcoinswitch)
+        'wss://' + window.location.host + '/api/v1/ws/' + deviceId
+      this.settingsDialog.data = _.clone(device)
       this.settingsDialog.show = true
     },
     websocketConnector(websocketUrl) {
@@ -253,13 +252,13 @@ window.app = Vue.createApp({
     },
     exportCSV() {
       LNbits.utils.exportCSV(
-        this.bitcoinswitchTable.columns,
-        this.bitcoinswitches
+        this.deviceTable.columns,
+        this.devices
       )
     }
   },
   created() {
-    this.getBitcoinswitches()
+    this.getDevices()
     this.location = [window.location.protocol, '//', window.location.host].join(
       ''
     )

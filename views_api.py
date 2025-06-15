@@ -8,110 +8,118 @@ from lnbits.decorators import (
     require_invoice_key,
 )
 from lnbits.helpers import urlsafe_short_hash
-from lnurl.exceptions import InvalidUrl
 
 from .crud import (
-    create_bitcoinswitch,
-    delete_bitcoinswitch,
-    get_bitcoinswitch,
-    get_bitcoinswitches,
-    update_bitcoinswitch,
+    create_device,
+    delete_device,
+    get_device,
+    get_devices,
+    update_device,
 )
-from .models import Bitcoinswitch, CreateBitcoinswitch
-
-bitcoinswitch_api_router = APIRouter()
-
-
-@bitcoinswitch_api_router.post(
-    "/api/v1/bitcoinswitch", dependencies=[Depends(require_admin_key)]
+from .views_ws import (
+    websocket_send_switches
 )
-async def api_bitcoinswitch_create(
-    request: Request, data: CreateBitcoinswitch
-) -> Bitcoinswitch:
+from .views_lnurl import (
+    lnurl_offline_payment
+)
+from lnbits.core.services import (
+    websocket_manager
+)
+from .models import Device, CreateDevice, Switch
 
-    bitcoinswitch_id = urlsafe_short_hash()
+partytap_api_router = APIRouter()
 
-    # compute lnurl for each pin of switch
-    url = request.url_for(
-        "bitcoinswitch.lnurl_params", bitcoinswitch_id=bitcoinswitch_id
-    )
+
+
+@partytap_api_router.post(
+    "/api/v1/partytap", dependencies=[Depends(require_admin_key)]
+)
+async def api_device_create(
+    request: Request, data: CreateDevice
+) -> Device:
+
+    device_id = urlsafe_short_hash()[:8]
+
+    # create id for each switch
     for switch in data.switches:
-        try:
-            switch.set_lnurl(str(url))
-        except InvalidUrl as exc:
-            raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
-                detail=f"Invalid LNURL. `{url!s}`",
-            ) from exc
-
-    return await create_bitcoinswitch(bitcoinswitch_id, data)
+        switch.id = urlsafe_short_hash()[:8]
+    
+    return await create_device(device_id, data)
 
 
-@bitcoinswitch_api_router.put(
-    "/api/v1/bitcoinswitch/{bitcoinswitch_id}",
+@partytap_api_router.put(
+    "/api/v1/partytap/{device_id}",
     dependencies=[Depends(require_admin_key)],
 )
-async def api_bitcoinswitch_update(
-    request: Request, data: CreateBitcoinswitch, bitcoinswitch_id: str
+async def api_device_update(
+    request: Request, data: CreateDevice, device_id: str
 ):
-    bitcoinswitch = await get_bitcoinswitch(bitcoinswitch_id)
-    if not bitcoinswitch:
+    device = await get_device(device_id)
+    if not device:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="bitcoinswitch does not exist"
+            status_code=HTTPStatus.NOT_FOUND, detail="partytap device does not exist"
         )
 
     for k, v in data.dict().items():
         if v is not None:
-            setattr(bitcoinswitch, k, v)
+            setattr(device, k, v)
 
-    # compute lnurl for each pin of switch
-    url = request.url_for(
-        "bitcoinswitch.lnurl_params", bitcoinswitch_id=bitcoinswitch_id
-    )
-    for switch in data.switches:
-        try:
-            switch.set_lnurl(str(url))
-        except InvalidUrl as exc:
-            raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
-                detail=f"Invalid LNURL. `{url!s}`",
-            ) from exc
+    device.switches = data.switches
 
-    bitcoinswitch.switches = data.switches
+    device = await update_device(device)
 
-    return await update_bitcoinswitch(bitcoinswitch)
+    await websocket_send_switches(device)
 
+    return device
 
-@bitcoinswitch_api_router.get("/api/v1/bitcoinswitch")
-async def api_bitcoinswitchs_retrieve(
+@partytap_api_router.get("/api/v1/partytap")
+async def api_devices_retrieve(
     key_info: WalletTypeInfo = Depends(require_invoice_key),
-) -> list[Bitcoinswitch]:
+) -> list[Device]:
     user = await get_user(key_info.wallet.user)
-    assert user, "Bitcoinswitch cannot retrieve user"
-    return await get_bitcoinswitches(user.wallet_ids)
+    assert user, "partytap cannot retrieve user"
+    devices = await get_devices(user.wallet_ids)
+    for device in devices:
+        device.websocket = 0
+        for connection in websocket_manager.active_connections:
+            if connection.path_params["item_id"] == device.id:
+                device.websocket += 1
+    return devices
 
 
-@bitcoinswitch_api_router.get(
-    "/api/v1/bitcoinswitch/{bitcoinswitch_id}",
+@partytap_api_router.get(
+    "/api/v1/partytap/{device_id}",
     dependencies=[Depends(require_invoice_key)],
 )
-async def api_bitcoinswitch_retrieve(bitcoinswitch_id: str):
-    bitcoinswitch = await get_bitcoinswitch(bitcoinswitch_id)
-    if not bitcoinswitch:
+async def api_device_retrieve(device_id: str):
+    device = await get_device(device_id)
+    if not device:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="bitcoinswitch does not exist"
+            status_code=HTTPStatus.NOT_FOUND, detail="partytap device does not exist"
         )
-    return bitcoinswitch
+
+    device.websocket = 0
+    for connection in websocket_manager.active_connections:
+        if connection.path_params["item_id"] == device.id:
+            device.websocket += 1
+
+    return device
 
 
-@bitcoinswitch_api_router.delete(
-    "/api/v1/bitcoinswitch/{bitcoinswitch_id}",
+@partytap_api_router.delete(
+    "/api/v1/partytap/{device_id}",
     dependencies=[Depends(require_admin_key)],
 )
-async def api_bitcoinswitch_delete(bitcoinswitch_id: str):
-    bitcoinswitch = await get_bitcoinswitch(bitcoinswitch_id)
-    if not bitcoinswitch:
+async def api_device_delete(device_id: str):
+    device = await get_device(device_id)
+    if not device:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="Lnurldevice does not exist."
+            status_code=HTTPStatus.NOT_FOUND, detail="partytap device does not exist."
         )
-    await delete_bitcoinswitch(bitcoinswitch_id)
+    await delete_device(device_id)
+
+@partytap_api_router.get(
+    "/api/v1/device/{device_id}/payment"
+)
+async def api_lnurldevice_offline_payment(req: Request, device_id: str, encrypted: str, iv: str):
+    return await lnurl_offline_payment(req, device_id, encrypted, iv)
