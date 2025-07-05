@@ -126,7 +126,7 @@ async def websocket_create_invoice(device: Device,switch: Switch):
         })
     )
 
-async def lnurlw_withdraw(device: Device, payment_request: str,lnurlw: str):
+async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
     # validate lnurlw
     if not lnurlw.startswith("lnurlw://"):
         logger.error("lnurlw does not start with 'lnurlw://'")
@@ -288,8 +288,12 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
                     if not field in jsobj:
                         logger.error(f"Required field: '{field}' not present in message")
                         continue
-               
-                await lnurl_withdraw(device,jsobj["payment_request"],jsobj["lnurlw"])
+                try:
+                    await lnurl_withdraw(device,jsobj["payment_request"],jsobj["lnurlw"])
+                except Exception as X:
+                    logger.error(f"An exception of type: {type(X).__name__} occured")
+                    logger.error(X)
+                    continue
 
             else:                
                 logger.warning(f"Unknown event type {jsobj['event']} ignored")
