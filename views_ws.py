@@ -158,6 +158,8 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
 
         return
     
+
+
     for field in ['k1','callback']:
         if not field in result:
             logger.error(f"No {field} in result")
@@ -173,7 +175,12 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
             return
     
     # construct callback url
-    url = f"{result['callback']}?k1={result['k1']}&pr={payment_request}"
+    url = result['callback']
+    if '?' not in url:
+        url += '?'
+    else:
+        url += '&'
+    url += f"k1={result['k1']}&pr={payment_request}"
     
     # just make the call and forget about it 
     async with httpx.AsyncClient() as client:
