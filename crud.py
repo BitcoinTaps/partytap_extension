@@ -32,15 +32,13 @@ async def create_device(
         wallet=data.wallet,
         currency=data.currency,
         branding=data.branding,
-        switches=data.switches,
-        timestamp=int(time.time())
+        switches=data.switches
     )
     await db.insert("partytap.device", device)
     return device
 
 
 async def update_device(device: Device) -> Device:
-    device.timestamp = int(time.time())
     await db.update("partytap.device", device)
     return device
 
@@ -87,8 +85,7 @@ async def create_partytap_payment(
         payload=payload,
         pin=pin,
         payhash=payment_hash,
-        sats=amount_msat,
-        timestamp=int(time.time())
+        sats=amount_msat
     )
 
     try: 

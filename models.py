@@ -6,7 +6,6 @@ from lnurl import encode as lnurl_encode
 from lnurl.types import LnurlPayMetadata
 from pydantic import BaseModel, Field, Extra
 
-
 class Switch(BaseModel):
     id: Optional[str]
     amount: float = 0.0
@@ -29,7 +28,7 @@ class Device(BaseModel, extra=Extra.allow):
     currency: str
     branding: str
     switches: list[Switch]
-    timestamp: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PartytapPayment(BaseModel):
     id: str
@@ -39,4 +38,4 @@ class PartytapPayment(BaseModel):
     payload: str
     pin: str
     sats: int
-    timestamp: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

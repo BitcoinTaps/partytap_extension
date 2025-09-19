@@ -52,7 +52,7 @@ async def websocket_send_switches(device: Device):
     message = {
         "event":"switches",
         "switches": [],
-        "version": "TESTING",
+        "version": "865875",
         "branding": device.branding,
         "key":device.key        
     }
