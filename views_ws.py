@@ -256,6 +256,11 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
 
 
             if jsobj["event"] == 'createinvoice':
+                device = await get_device(device.id)
+                if not device:
+                    logger.error("Could not retrieve device for invoice")
+                    continue
+                
                 if not "switch_id" in jsobj:
                     logger.error(f"Required field: 'switch_id' not present in message")
                     continue
