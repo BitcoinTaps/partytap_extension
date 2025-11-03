@@ -167,13 +167,17 @@ async def get_partytap_payment_by_payload(
 
 
 async def get_recent_partytap_payment(
-    payload: str,
+    deviceid: str,
+    delay: int
 ) -> Optional[PartytapPayment]:
     return await db.fetchone(
         """
         SELECT * FROM partytap.payment
-        WHERE payload = :payload ORDER BY timestamp DESC LIMIT 1
+        WHERE deviceid = :deviceid WHERE timestamp > {query_timestamp} ORDER BY timestamp DESC LIMIT 1
         """,
-        {"payload": payload},
+        {
+            "deviceid": deviceid,
+            "query_timestamp": db.timestamp_now - delay
+        },        
         PartytapPayment,
     )

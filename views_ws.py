@@ -24,6 +24,7 @@ from .crud import (
     get_device,
     create_partytap_payment,
     update_partytap_payment,
+    get_recent_partytap_payment
 )
 
 
@@ -31,7 +32,6 @@ from loguru import logger
 
 from lnbits.core.services import (
     websocket_manager,
-    websocket_updater,
     create_invoice
 )
 
@@ -65,13 +65,13 @@ async def websocket_send_switches(device: Device):
             "currency": device.currency
         })
 
-    await websocket_updater(device.id,json.dumps(message))
+    await websocket_manager.send(device.id,json.dumps(message))
 
 async def websocket_create_invoice(device: Device,switch: Switch):
     price_msat = int(
         (
             await fiat_amount_as_satoshis(float(switch.amount), device.currency)
-            if device.currency != "sat"
+            if device.currency.lower() != "sat"
             else float(switch.amount)
         )
         * 1000
@@ -87,7 +87,7 @@ async def websocket_create_invoice(device: Device,switch: Switch):
     )
 
     if not partytap_payment:
-        await websocket_updater(item_id,json.dumps({"status": "ERROR", "reason": "Could not create payment."}))
+        await websocket_manager.send(item_id,json.dumps({"status": "ERROR", "reason": "Could not create payment."}))
         return
 
     try:              
@@ -117,7 +117,7 @@ async def websocket_create_invoice(device: Device,switch: Switch):
         
     await update_partytap_payment(partytap_payment)
 
-    await websocket_updater(
+    await websocket_manager.send(
         device.id,
         json.dumps({
             "event":"invoice",
@@ -148,7 +148,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         if 'reason' in result:
             logger.error(f"Reason: {result['reason']}")
 
-        await websocket_updater(
+        await websocket_manager.send(
             device.id,
             json.dumps({
                 "event":"paymentfailed",
@@ -164,7 +164,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         if not field in result:
             logger.error(f"No {field} in result")
 
-            await websocket_updater(
+            await websocket_manager.send(
                 device.id,
                 json.dumps({
                     "event":"paymentfailed",
@@ -195,7 +195,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
                     logger.error(f"Reason: {result['reason']}")
 
                     
-                await websocket_updater(
+                await websocket_manager.send(
                     device.id,
                     json.dumps({
                         "event":"paymentfailed",
@@ -209,7 +209,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         except (httpx.ConnectError, httpx.RequestError):
             logger.error("http request failed")
 
-            await websocket_updater(
+            await websocket_manager.send(
                 device.id,
                 json.dumps({
                     "event":"paymentfailed",
@@ -229,12 +229,24 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
 
     device = await get_device(item_id)
     if not device:
-        await websocket_updater(item_id,'{"event":"error","message":"device id does not exist"}')
+        await websocket_manager.send(item_id,'{"event":"error","message":"device id does not exist"}')
         return
     
 
     await websocket_send_switches(device)
 
+    # check recent payments that are not confirmed as received
+    partytap_payment = await get_recent_partytap_payment(item_id,300)
+    if partytap_payment and partytap_payment.timestamp :
+        payment = await get_standalone_payment(payment.payhash)
+        if 'received' in payment.extra and payment.extra['received'] == False:
+            message = json.dumps({
+                'event':'paid',
+                'payment_hash':partytap_payment.payhash,
+                'payload':partytap_payment.payload
+            })
+            logger.info("Resending payment")
+            
     try:    
         while settings.lnbits_running:
             message = await websocket.receive_text()
