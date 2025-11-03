@@ -50,24 +50,30 @@ from .models import Device, CreateDevice, Switch
 partytap_ws_router = APIRouter(prefix="/api/v1/ws", tags = ["Websocket"])
 
 async def websocket_send_switches(device: Device):
-    message = {
-        "event":"switches",
-        "switches": [],
-        "version": "865875",
-        "branding": device.branding,
-        "key":device.key        
-    }
-    for _switch in device.switches:
-        message["switches"].append({
-            "label": _switch.label,
-            "id":  _switch.id,
-            "duration": _switch.duration,
-            "amount": _switch.amount,
-            "currency": device.currency
-        })
+    try:
+        message = {
+            "event":"switches",
+            "switches": [],
+            "version": "865875",
+            "branding": device.branding,
+            "key":device.key        
+        }
+        for _switch in device.switches:
+            message["switches"].append({
+                "label": _switch.label,
+                "id":  _switch.id,
+                "duration": _switch.duration,
+                "amount": _switch.amount,
+                "currency": device.currency
+            })
+            
+    
+        await websocket_updater(device.id,json.dumps(message))
+    except Exception as X:
+        logger.error(f"An exception of type: {type(X).__name__} occured in websocket_send_swicthes")
+        logger.error(X)
 
-    await websocket_updater(device.id,json.dumps(message))
-
+        
 async def websocket_create_invoice(device: Device,switch: Switch):
     price_msat = int(
         (
@@ -326,9 +332,10 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
 
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket)
-    except Exception as e:
-        logger.error('Unknown exception in websocket %s: %s', type(e), e)
-
+    except Exception as X:
+        logger.error(f"An exception of type: {type(X).__name__} occured")
+        logger.error(X)
+    
 
 
 
