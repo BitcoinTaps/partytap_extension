@@ -2,7 +2,10 @@ import asyncio
 import json
 
 from lnbits.core.models import Payment
-from lnbits.core.services import websocket_manager
+from lnbits.core.services import (
+    websocket_manager,
+    websocket_updater
+)
 from lnbits.tasks import register_invoice_listener
 from loguru import logger
 
@@ -51,7 +54,7 @@ async def on_invoice_paid(payment: Payment) -> None:
 
     logger.info("sending on the socket")
 
-    await websocket_manager.send(
+    await websocket_updater(
         partytap_payment.deviceid,
         message
     )
