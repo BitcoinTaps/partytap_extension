@@ -8,6 +8,7 @@ from lnbits.helpers import urlsafe_short_hash
 from sqlalchemy.exc import OperationalError
 
 
+
 from .models import (
     Device,
     PartytapPayment,
@@ -172,7 +173,7 @@ async def get_recent_partytap_payment(
 ) -> Optional[PartytapPayment]:
 
     
-    if db.type == SQLITE:
+    if db.type == 'SQLITE':
         query_timestamp = f"(strftime('%s', 'now') - {delay})"
     else:
         query_timestamp = "NOW() - INTERVAL '{delay} seconds'"
