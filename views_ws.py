@@ -226,29 +226,30 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
 async def websocket_connect(websocket: WebSocket, item_id: str):
 
     logger.info("new connection")
-    await websocket_manager.connect(websocket, item_id)
-
-    device = await get_device(item_id)
-    if not device:
-        await websocket_updater(item_id,'{"event":"error","message":"device id does not exist"}')
-        return
+    try:    
+        await websocket_manager.connect(websocket, item_id)
+        
+        device = await get_device(item_id)
+        if not device:
+            await websocket_updater(item_id,'{"event":"error","message":"device id does not exist"}')
+            return
     
 
-    await websocket_send_switches(device)
+        await websocket_send_switches(device)
 
-    # check recent payments that are not confirmed as received
-    partytap_payment = await get_recent_partytap_payment(item_id,300)
-    if partytap_payment and partytap_payment.timestamp :
-        payment = await get_standalone_payment(payment.payhash)
-        if 'received' in payment.extra and payment.extra['received'] == False:
-            message = json.dumps({
-                'event':'paid',
-                'payment_hash':partytap_payment.payhash,
-                'payload':partytap_payment.payload
-            })
-            logger.info("Resending payment")
+        # check recent payments that are not confirmed as received
+        partytap_payment = await get_recent_partytap_payment(item_id,300)
+        if partytap_payment and partytap_payment.timestamp :
+            payment = await get_standalone_payment(payment.payhash)
+            if 'received' in payment.extra and payment.extra['received'] == False:
+                message = json.dumps({
+                    'event':'paid',
+                    'payment_hash':partytap_payment.payhash,
+                    'payload':partytap_payment.payload
+                })
+                logger.info("Resending payment")
             
-    try:    
+
         while settings.lnbits_running:
             message = await websocket.receive_text()
 
@@ -325,6 +326,8 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
 
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error('Unknown exception in websocket %s: %s', type(e), e)
 
 
 
