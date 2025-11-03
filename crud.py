@@ -170,6 +170,13 @@ async def get_recent_partytap_payment(
     deviceid: str,
     delay: int
 ) -> Optional[PartytapPayment]:
+
+    
+    if db.type == SQLITE:
+        query_timestamp = f"(strftime('%s', 'now') - {delay})"
+    else:
+        query_timestamp = "NOW() - INTERVAL '{delay} seconds'"
+              
     return await db.fetchone(
         """
         SELECT * FROM partytap.payment
@@ -177,7 +184,7 @@ async def get_recent_partytap_payment(
         """,
         {
             "deviceid": deviceid,
-            "query_timestamp": db.timestamp_now - delay
+            "query_timestamp": query_timestamp
         },        
         PartytapPayment,
     )
