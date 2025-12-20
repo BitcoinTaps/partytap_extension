@@ -2,10 +2,7 @@ import asyncio
 import json
 
 from lnbits.core.models import Payment
-from lnbits.core.services import (
-    websocket_manager,
-    websocket_updater
-)
+from lnbits.core.services import websocket_manager
 from lnbits.tasks import register_invoice_listener
 from loguru import logger
 
@@ -54,8 +51,13 @@ async def on_invoice_paid(payment: Payment) -> None:
 
     logger.info("sending on the socket")
 
-    await websocket_updater(
-        partytap_payment.deviceid,
-        message
-    )
+    try:
+        await websocket_manager.send(
+            partytap_payment.deviceid,
+            message
+        )
+    except Exception as X:        
+        logger.error("Failure in calling websocket_updater")
+        logger.error(X)
+        
         

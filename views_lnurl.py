@@ -1,5 +1,4 @@
 from http import HTTPStatus
-
 from fastapi import APIRouter, Query, Request, HTTPException
 from lnbits.core.services import create_invoice
 from lnbits.utils.exchange_rates import fiat_amount_as_satoshis
@@ -13,17 +12,17 @@ import json
 from pydantic import parse_obj_as
 
 
-from lnurl import LnurlErrorResponse, LnurlPayActionResponse, LnurlPayResponse
-from lnurl.models import UrlAction
-from lnurl.types import (
-    ClearnetUrl,
-    DebugUrl,
+from lnurl import (
+    LnurlErrorResponse,
+    LnurlPayActionResponse,
+    LnurlPayResponse,
     LightningInvoice,
-    Max144Str,
-    MilliSatoshi,
-    OnionUrl,
     LnurlPayMetadata,
+    Max144Str,
+    UrlAction,
+    MilliSatoshi
 )
+
 
 from .crud import (
     get_device,
@@ -191,9 +190,7 @@ async def lnurl_callback(
 
         succes_action = UrlAction(
             url=url,
-            description=Max144Str(
-                "Open to get the confirmation PIN."
-            ),
+            description=parse_obj_as(Max144Str,"Open to get the confirmation PIN."),
         )
         invoice = parse_obj_as(LightningInvoice,LightningInvoice(payment.bolt11))
         resp = LnurlPayActionResponse(

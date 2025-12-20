@@ -32,7 +32,6 @@ from loguru import logger
 
 from lnbits.core.services import (
     websocket_manager,
-    websocket_updater,
     create_invoice
 )
 
@@ -58,6 +57,7 @@ async def websocket_send_switches(device: Device):
             "branding": device.branding,
             "key":device.key        
         }
+
         for _switch in device.switches:
             message["switches"].append({
                 "label": _switch.label,
@@ -67,10 +67,14 @@ async def websocket_send_switches(device: Device):
                 "currency": device.currency
             })
             
-    
-        await websocket_updater(device.id,json.dumps(message))
+
+        await websocket_manager.send(device.id,json.dumps(message))
+        
+    except RuntimeError as X:
+        logger.error("RuntimeError in websocket_send_switches")
+        logger.error(X)
     except Exception as X:
-        logger.error(f"An exception of type: {type(X).__name__} occured in websocket_send_swicthes")
+        logger.error(f"4 An exception of type: {type(X).__name__} occured in websocket_send_switches")
         logger.error(X)
 
         
@@ -94,7 +98,7 @@ async def websocket_create_invoice(device: Device,switch: Switch):
     )
 
     if not partytap_payment:
-        await websocket_updater(item_id,json.dumps({"status": "ERROR", "reason": "Could not create payment."}))
+        await websocket_manager.send(item_id,json.dumps({"status": "ERROR", "reason": "Could not create payment."}))
         return
 
     try:              
@@ -117,21 +121,29 @@ async def websocket_create_invoice(device: Device,switch: Switch):
             },
         )
         partytap_payment.payhash = payment.payment_hash
+    except AttributeError as X:
+        logger.error("An AttributeError occured in websocket_create_invoice")
+        return
     except Exception as X:
         logger.error(f"An exception of type: {type(X).__name__} occured")
         logger.error(X)
         return
-        
+
     await update_partytap_payment(partytap_payment)
 
-    await websocket_updater(
-        device.id,
-        json.dumps({
-            "event":"invoice",
-            "pr": payment.bolt11,
-            "payment_hash": payment.payment_hash
-        })
-    )
+    try:
+        await websocket_manager.send(
+            device.id,
+            json.dumps({
+                "event":"invoice",
+                "pr": payment.bolt11,
+                "payment_hash": payment.payment_hash
+            })
+        )
+    except Exception as X:
+        logger.error("Error calling websocket_updater")
+        logger.error(X)
+
 
 async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
     # validate lnurlw
@@ -155,7 +167,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         if 'reason' in result:
             logger.error(f"Reason: {result['reason']}")
 
-        await websocket_updater(
+        await websocket_manager.send(
             device.id,
             json.dumps({
                 "event":"paymentfailed",
@@ -171,7 +183,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         if not field in result:
             logger.error(f"No {field} in result")
 
-            await websocket_updater(
+            await websocket_manager.send(
                 device.id,
                 json.dumps({
                     "event":"paymentfailed",
@@ -202,7 +214,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
                     logger.error(f"Reason: {result['reason']}")
 
                     
-                await websocket_updater(
+                await websocket_manager.send(
                     device.id,
                     json.dumps({
                         "event":"paymentfailed",
@@ -216,7 +228,7 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
         except (httpx.ConnectError, httpx.RequestError):
             logger.error("http request failed")
 
-            await websocket_updater(
+            await websocket_manager.send(
                 device.id,
                 json.dumps({
                     "event":"paymentfailed",
@@ -230,37 +242,41 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
 
 @partytap_ws_router.websocket("/{item_id}")
 async def websocket_connect(websocket: WebSocket, item_id: str):
+    try:
+        connections = websocket_manager.get_connections(item_id)
 
-    logger.info("new connection")
-    try:    
-        await websocket_manager.connect(websocket, item_id)
+        logger.info(f"Removing all existing connections to {item_id}")
+        for conn in websocket_manager.active_connections:
+            if conn.item_id == item_id:
+                websocket_manager.active_connections.remove(conn)
         
+        await websocket_manager.connect(item_id, websocket)
         device = await get_device(item_id)
         if not device:
-            await websocket_updater(item_id,'{"event":"error","message":"device id does not exist"}')
+            await websocket_manager.send(item_id,'{"event":"error","message":"device id does not exist"}')
             return
-    
 
         await websocket_send_switches(device)
 
         # check recent payments that are not confirmed as received
-        partytap_payment = await get_recent_partytap_payment(item_id,300)
-        if partytap_payment and partytap_payment.timestamp :
-            payment = await get_standalone_payment(payment.payhash)
-            if 'received' in payment.extra and payment.extra['received'] == False:
-                message = json.dumps({
-                    'event':'paid',
-                    'payment_hash':partytap_payment.payhash,
-                    'payload':partytap_payment.payload
-                })
-                logger.info("Resending payment")
-            
+        #logger.info("Checking for recent payments")
+        #partytap_payment = await get_recent_partytap_payment(item_id,300000)
+        #if partytap_payment:
+        #    logger.info("Got a recent payment")
+        #    payment = await get_standalone_payment(partytap_payment.payhash)
+        #    if 'received' in payment.extra and payment.extra['received'] == False:
+        #        logger.info("payment extra received = false")
+        #        message = json.dumps({
+        #            'event':'paid',
+        #            'payment_hash':partytap_payment.payhash,
+        #            'payload':partytap_payment.payload
+        #        })
+        #        logger.info(f"Resending payment: {message}")
+        #        await websocket_updater(device.id,message)
+
 
         while settings.lnbits_running:
             message = await websocket.receive_text()
-
-            logger.info(message)
-
 
             try:
                 jsobj = json.loads(message)
@@ -268,19 +284,16 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
                 logger.warning("Invalid JSON message received. Ignoring")                                        
                 continue
             
-    
             if not "event" in jsobj:
                 logger.warning("No event in message, ignored") 
                 continue
-
-
 
             if jsobj["event"] == 'createinvoice':
                 device = await get_device(device.id)
                 if not device:
                     logger.error("Could not retrieve device for invoice")
                     continue
-                
+
                 if not "switch_id" in jsobj:
                     logger.error(f"Required field: 'switch_id' not present in message")
                     continue
@@ -290,13 +303,13 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
                     if _switch.id == jsobj["switch_id"]:
                         switch = _switch
                         break
-                
+
                 if not switch:
                     logger.error(f"No switch in device present with the current id")
                     continue
 
                 await websocket_create_invoice(device,switch)
-
+            
             elif jsobj["event"] in ["received","acknowledged","fulfilled"]:
                 if not 'payment_hash' in jsobj:
                     logger.error("Required field: 'payment_hash' not present in message")
@@ -330,8 +343,14 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
             else:                
                 logger.warning(f"Unknown event type {jsobj['event']} ignored")
 
-    except WebSocketDisconnect:
-        websocket_manager.disconnect(websocket)
+                
+    except WebSocketDisconnect as X:
+        logger.info("WebSocket Disconnected")
+        logger.info(X)
+        #websocket_manager.disconnect(websocket)
+    except AttributeError as X:
+        logger.error("Attribute Error")
+        logger.error(X)
     except Exception as X:
         logger.error(f"An exception of type: {type(X).__name__} occured")
         logger.error(X)
