@@ -81,9 +81,8 @@ async def api_devices_retrieve(
     devices = await get_devices(user.wallet_ids)
     for device in devices:
         device.websocket = 0
-        for connection in websocket_manager.active_connections:
-            if connection.path_params["item_id"] == device.id:
-                device.websocket += 1
+        for connection in websocket_manager.get_connections(device.id):
+            device.websocket += 1
     return devices
 
 
@@ -99,9 +98,8 @@ async def api_device_retrieve(device_id: str):
         )
 
     device.websocket = 0
-    for connection in websocket_manager.active_connections:
-        if connection.path_params["item_id"] == device.id:
-            device.websocket += 1
+    for connection in websocket_manager.get_connections(device.id):
+        device.websocket += 1
 
     return device
 
