@@ -243,12 +243,9 @@ async def lnurl_withdraw(device: Device, payment_request: str,lnurlw: str):
 @partytap_ws_router.websocket("/{item_id}")
 async def websocket_connect(websocket: WebSocket, item_id: str):
     try:
-        connections = websocket_manager.get_connections(item_id)
-
         logger.info(f"Removing all existing connections to {item_id}")
-        for conn in websocket_manager.active_connections:
-            if conn.item_id == item_id:
-                websocket_manager.active_connections.remove(conn)
+        for conn in websocket_manager.get_connections(item_id):
+            websocket_manager.active_connections.remove(conn)
         
         await websocket_manager.connect(item_id, websocket)
         device = await get_device(item_id)
@@ -347,6 +344,9 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
     except WebSocketDisconnect as X:
         logger.info("WebSocket Disconnected")
         logger.info(X)
+
+        for conn in websocket_manager.get_connections(item_id):
+            websocket_manager.active_connections.remove(conn)
         #websocket_manager.disconnect(websocket)
     except AttributeError as X:
         logger.error("Attribute Error")
