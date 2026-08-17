@@ -27,6 +27,8 @@ from lnbits.core.services import (
 )
 from .models import Device, CreateDevice, Switch
 
+from loguru import logger
+
 partytap_api_router = APIRouter()
 
 
@@ -65,6 +67,13 @@ async def api_device_update(
             setattr(device, k, v)
 
     device.switches = data.switches
+
+    # set id for switches that do not have an id
+    for switch in data.switches:
+        if not hasattr(switch,'id'):
+            switch.id = urlsafe_short_hash()[:8]
+        elif not switch.id:
+            switch.id = urlsafe_short_hash()[:8]
 
     device = await update_device(device)
 

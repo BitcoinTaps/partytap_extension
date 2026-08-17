@@ -48,6 +48,7 @@ from .models import Device, CreateDevice, Switch
 
 partytap_ws_router = APIRouter(prefix="/api/v1/ws", tags = ["Websocket"])
 
+
 async def websocket_send_switches(device: Device):
     try:
         message = {
@@ -285,7 +286,18 @@ async def websocket_connect(websocket: WebSocket, item_id: str):
                 logger.warning("No event in message, ignored") 
                 continue
 
-            if jsobj["event"] == 'createinvoice':
+            if jsobj["event"] == 'connect':
+                logger.info("Received connect event")
+
+                device = await get_device(device.id)
+                if not device:
+                    logger.error("Could not retrieve device for invoice")
+                    continue
+
+                
+                await websocket_send_switches(device)
+
+            elif jsobj["event"] == 'createinvoice':
                 device = await get_device(device.id)
                 if not device:
                     logger.error("Could not retrieve device for invoice")
