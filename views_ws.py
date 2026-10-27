@@ -111,8 +111,10 @@ async def websocket_create_invoice(device: Device,switch: Switch):
             unhashed_description=LnurlPayMetadata(json.dumps([["text/plain", memo]])).encode(),
             extra={
                 "tag": "PartyTap",
-                "Device": device.id,
-                "Switch": switch.id,
+                "device": device.id,
+                "switch": switch.id,
+                "label":switch.label,
+                "volume":switch.duration,
                 "amount": switch.amount,
                 "currency": device.currency,
                 "id": partytap_payment.id,

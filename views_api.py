@@ -1,4 +1,5 @@
 from http import HTTPStatus
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from lnbits.core.crud import get_user
@@ -8,12 +9,15 @@ from lnbits.decorators import (
     require_invoice_key,
 )
 from lnbits.helpers import urlsafe_short_hash
+from lnurl.types import LnurlPayMetadata
 
 from .crud import (
     create_device,
     delete_device,
     get_device,
     get_devices,
+    create_partytap_payment,
+    update_partytap_payment,
     update_device,
 )
 from .views_ws import (
@@ -23,7 +27,8 @@ from .views_lnurl import (
     lnurl_offline_payment
 )
 from lnbits.core.services import (
-    websocket_manager
+    websocket_manager,
+    create_invoice
 )
 from .models import Device, CreateDevice, Switch
 
@@ -130,3 +135,45 @@ async def api_device_delete(device_id: str):
 )
 async def api_lnurldevice_offline_payment(req: Request, device_id: str, encrypted: str, iv: str):
     return await lnurl_offline_payment(req, device_id, encrypted, iv)
+
+
+@partytap_api_router.post(
+    "/api/v1/partytap/{device_id}/{switch_id}/free",
+    dependencies=[Depends(require_admin_key)],
+)
+async def api_device_free(device_id: str,switch_id: str):
+    device = await get_device(device_id)
+    if not device:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail="partytap device does not exist."
+        )
+
+    switch = None
+    for _switch in device.switches:
+        if _switch.id == switch_id:
+            switch = _switch
+            break
+        
+    if not switch:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail="No switch in device present with the given id."
+        )
+
+    message = json.dumps({
+        'event':'paid',
+        'payment_hash':'NA',
+        'payload':switch.duration,
+        'message':'Enjoy your Free drink!'
+    })
+    
+    try:
+        await websocket_manager.send(
+            device_id,
+            message
+        )
+    except Exception as X:        
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Failed to send websocket megssage."
+        )
+
+    return {"message":"free drink sent to the tap"}

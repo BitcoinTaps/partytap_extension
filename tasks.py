@@ -46,7 +46,8 @@ async def on_invoice_paid(payment: Payment) -> None:
     message = json.dumps({
         'event':'paid',
         'payment_hash':partytap_payment.payhash,
-        'payload':partytap_payment.payload
+        'payload':partytap_payment.payload,
+        'message':'Enjoy your drink!'
     })
 
     logger.info("sending on the socket")
