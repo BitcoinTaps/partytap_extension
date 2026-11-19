@@ -92,7 +92,7 @@ async def websocket_create_invoice(device: Device,switch: Switch):
     partytap_payment = await create_partytap_payment(
         device_id=device.id,
         switch_id=switch.id,
-        payload=switch.duration,
+        payload=str(switch.duration),
         amount_msat=price_msat,
         payment_hash="not yet set",
         pin=""
